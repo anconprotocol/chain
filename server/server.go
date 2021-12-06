@@ -22,6 +22,7 @@ import (
 	"github.com/0xPolygon/polygon-sdk/state/runtime"
 	"github.com/0xPolygon/polygon-sdk/txpool"
 	"github.com/0xPolygon/polygon-sdk/types"
+	"github.com/anconprotocol/node/x/anconsync"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 
@@ -42,6 +43,7 @@ type Server struct {
 	config       *Config
 	state        state.State
 	stateStorage itrie.Storage
+	dagStorage   anconsync.Storage
 
 	consensus consensus.Consensus
 
@@ -118,12 +120,16 @@ func NewServer(logger hclog.Logger, config *Config) (*Server, error) {
 		m.network = network
 	}
 
+	dataFolder := ".ancon"
+	anconstorage := anconsync.NewStorage(dataFolder)
+
 	// start blockchain object
 	stateStorage, err := itrie.NewLevelDBStorage(filepath.Join(m.config.DataDir, "trie"), logger)
 	if err != nil {
 		return nil, err
 	}
 	m.stateStorage = stateStorage
+	m.dagStorage = anconstorage
 
 	st := itrie.NewState(stateStorage)
 	m.state = st
@@ -131,6 +137,7 @@ func NewServer(logger hclog.Logger, config *Config) (*Server, error) {
 	m.executor = state.NewExecutor(config.Chain.Params, st, logger)
 	m.executor.SetRuntime(precompiled.NewPrecompiled())
 	m.executor.SetRuntime(evm.NewEVM())
+	m.executor.PostHook = anconsync.GetHooks(m.dagStorage)
 
 	// compute the genesis root state
 	genesisRoot := m.executor.WriteGenesis(config.Chain.Genesis.Alloc)

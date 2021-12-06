@@ -61,6 +61,16 @@ func SplitAddr(m ma.Multiaddr) (transport ma.Multiaddr, id ID) {
 	return transport, id
 }
 
+// AddrInfoFromString builds an AddrInfo from the string representation of a Multiaddr
+func AddrInfoFromString(s string) (*AddrInfo, error) {
+	a, err := ma.NewMultiaddr(s)
+	if err != nil {
+		return nil, err
+	}
+
+	return AddrInfoFromP2pAddr(a)
+}
+
 // AddrInfoFromP2pAddr converts a Multiaddr to an AddrInfo.
 func AddrInfoFromP2pAddr(m ma.Multiaddr) (*AddrInfo, error) {
 	transport, id := SplitAddr(m)

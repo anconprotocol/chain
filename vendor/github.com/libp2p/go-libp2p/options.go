@@ -23,6 +23,7 @@ import (
 	autorelay "github.com/libp2p/go-libp2p/p2p/host/relay"
 
 	ma "github.com/multiformats/go-multiaddr"
+	madns "github.com/multiformats/go-multiaddr-dns"
 )
 
 // ListenAddrStrings configures libp2p to listen on the given (unparsed)
@@ -185,6 +186,9 @@ func Identity(sk crypto.PrivKey) Option {
 }
 
 // ConnectionManager configures libp2p to use the given connection manager.
+//
+// The current "standard" connection manager lives in github.com/libp2p/go-libp2p-connmgr. See
+// https://pkg.go.dev/github.com/libp2p/go-libp2p-connmgr?utm_source=godoc#NewConnManager.
 func ConnectionManager(connman connmgr.ConnManager) Option {
 	return func(cfg *Config) error {
 		if cfg.ConnManager != nil {
@@ -340,8 +344,7 @@ func FilterAddresses(addrs ...*net.IPNet) Option {
 		if cfg.ConnectionGater != nil {
 			var ok bool
 			if f, ok = cfg.ConnectionGater.(*filtersConnectionGater); !ok {
-				return errors.New("cannot configure both Filters and Connection Gater. " +
-					"\n Please consider configuring just a ConnectionGater instead.")
+				return errors.New("cannot configure both Filters and Connection Gater; please consider configuring just a ConnectionGater instead")
 			}
 		}
 
@@ -370,8 +373,7 @@ func FilterAddresses(addrs ...*net.IPNet) Option {
 func Filters(filters *ma.Filters) Option {
 	return func(cfg *Config) error {
 		if cfg.ConnectionGater != nil {
-			return errors.New("cannot configure both Filters and Connection Gater. " +
-				"\n Please consider configuring just a ConnectionGater instead.")
+			return errors.New("cannot configure both Filters and Connection Gater; please consider configuring just a ConnectionGater instead")
 
 		}
 		cfg.ConnectionGater = (*filtersConnectionGater)(filters)
@@ -459,6 +461,14 @@ var NoTransports = func(cfg *Config) error {
 func UserAgent(userAgent string) Option {
 	return func(cfg *Config) error {
 		cfg.UserAgent = userAgent
+		return nil
+	}
+}
+
+// MultiaddrResolver sets the libp2p dns resolver
+func MultiaddrResolver(rslv *madns.Resolver) Option {
+	return func(cfg *Config) error {
+		cfg.MultiaddrResolver = rslv
 		return nil
 	}
 }

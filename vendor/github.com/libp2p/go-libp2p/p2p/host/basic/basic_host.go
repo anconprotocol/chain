@@ -27,9 +27,8 @@ import (
 	"github.com/libp2p/go-libp2p/p2p/protocol/ping"
 	"github.com/libp2p/go-netroute"
 
-	logging "github.com/ipfs/go-log"
+	logging "github.com/ipfs/go-log/v2"
 
-	"github.com/multiformats/go-multiaddr"
 	ma "github.com/multiformats/go-multiaddr"
 	madns "github.com/multiformats/go-multiaddr-dns"
 	manet "github.com/multiformats/go-multiaddr/net"
@@ -112,7 +111,7 @@ type BasicHost struct {
 	signKey                 crypto.PrivKey
 	caBook                  peerstore.CertifiedAddrBook
 
-	AutoNat autonat.AutoNAT
+	autoNat autonat.AutoNAT
 }
 
 var _ host.Host = (*BasicHost)(nil)
@@ -193,7 +192,10 @@ func NewHost(ctx context.Context, n network.Network, opts *HostOpts) (*BasicHost
 		}
 
 		// persist a signed peer record for self to the peerstore.
-		rec := peer.PeerRecordFromAddrInfo(peer.AddrInfo{h.ID(), h.Addrs()})
+		rec := peer.PeerRecordFromAddrInfo(peer.AddrInfo{
+			ID:    h.ID(),
+			Addrs: h.Addrs(),
+		})
 		ev, err := record.Seal(rec, h.signKey)
 		if err != nil {
 			return nil, fmt.Errorf("failed to create signed record for self: %w", err)
@@ -209,9 +211,12 @@ func NewHost(ctx context.Context, n network.Network, opts *HostOpts) (*BasicHost
 
 	// we can't set this as a default above because it depends on the *BasicHost.
 	if h.disableSignedPeerRecord {
-		h.ids = identify.NewIDService(h, identify.UserAgent(opts.UserAgent), identify.DisableSignedPeerRecord())
+		h.ids, err = identify.NewIDService(h, identify.UserAgent(opts.UserAgent), identify.DisableSignedPeerRecord())
 	} else {
-		h.ids = identify.NewIDService(h, identify.UserAgent(opts.UserAgent))
+		h.ids, err = identify.NewIDService(h, identify.UserAgent(opts.UserAgent))
+	}
+	if err != nil {
+		return nil, fmt.Errorf("failed to create Identify service: %s", err)
 	}
 
 	if uint64(opts.NegotiationTimeout) != 0 {
@@ -387,7 +392,7 @@ func (h *BasicHost) newStreamHandler(s network.Stream) {
 		if err == io.EOF {
 			logf := log.Debugf
 			if took > time.Second*10 {
-				logf = log.Warningf
+				logf = log.Warnf
 			}
 			logf("protocol EOF: %s (took %s)", s.Conn().RemotePeer(), took)
 		} else {
@@ -459,12 +464,15 @@ func makeUpdatedAddrEvent(prev, current []ma.Multiaddr) *event.EvtLocalAddresses
 }
 
 func (h *BasicHost) makeSignedPeerRecord(evt *event.EvtLocalAddressesUpdated) (*record.Envelope, error) {
-	current := make([]multiaddr.Multiaddr, 0, len(evt.Current))
+	current := make([]ma.Multiaddr, 0, len(evt.Current))
 	for _, a := range evt.Current {
 		current = append(current, a.Address)
 	}
 
-	rec := peer.PeerRecordFromAddrInfo(peer.AddrInfo{h.ID(), current})
+	rec := peer.PeerRecordFromAddrInfo(peer.AddrInfo{
+		ID:    h.ID(),
+		Addrs: current,
+	})
 	return record.Seal(rec, h.signKey)
 }
 
@@ -512,7 +520,11 @@ func (h *BasicHost) background() {
 	defer ticker.Stop()
 
 	for {
-		h.updateLocalIpAddr()
+		if len(h.network.ListenAddresses()) > 0 {
+			h.updateLocalIpAddr()
+		}
+		// Request addresses anyways because, technically, address filters still apply.
+		// The underlying AllAddrs call is effectivley a no-op.
 		curr := h.Addrs()
 		emitAddrChange(curr, lastAddrs)
 		lastAddrs = curr
@@ -631,10 +643,24 @@ func (h *BasicHost) NewStream(ctx context.Context, p peer.ID, pids ...protocol.I
 		}, nil
 	}
 
-	selected, err := msmux.SelectOneOf(pidStrings, s)
-	if err != nil {
+	// Negotiate the protocol in the background, obeying the context.
+	var selected string
+	errCh := make(chan error, 1)
+	go func() {
+		selected, err = msmux.SelectOneOf(pidStrings, s)
+		errCh <- err
+	}()
+	select {
+	case err = <-errCh:
+		if err != nil {
+			s.Reset()
+			return nil, err
+		}
+	case <-ctx.Done():
 		s.Reset()
-		return nil, err
+		// wait for the negotiation to cancel.
+		<-errCh
+		return nil, ctx.Err()
 	}
 
 	selpid := protocol.ID(selected)
@@ -711,7 +737,7 @@ func (h *BasicHost) resolveAddrs(ctx context.Context, pi peer.AddrInfo) ([]ma.Mu
 		// We've resolved too many addresses. We can keep all the fully
 		// resolved addresses but we'll need to skip the rest.
 		if resolveSteps >= maxAddressResolution {
-			log.Warningf(
+			log.Warnf(
 				"peer %s asked us to resolve too many addresses: %s/%s",
 				pi.ID,
 				resolveSteps,
@@ -791,14 +817,19 @@ func dedupAddrs(addrs []ma.Multiaddr) (uniqueAddrs []ma.Multiaddr) {
 // AllAddrs returns all the addresses of BasicHost at this moment in time.
 // It's ok to not include addresses if they're not available to be used now.
 func (h *BasicHost) AllAddrs() []ma.Multiaddr {
+	listenAddrs := h.Network().ListenAddresses()
+	if len(listenAddrs) == 0 {
+		return nil
+	}
+
 	h.addrMu.RLock()
 	filteredIfaceAddrs := h.filteredInterfaceAddrs
 	allIfaceAddrs := h.allInterfaceAddrs
+	autonat := h.autoNat
 	h.addrMu.RUnlock()
 
 	// Iterate over all _unresolved_ listen addresses, resolving our primary
 	// interface only to avoid advertising too many addresses.
-	listenAddrs := h.Network().ListenAddresses()
 	var finalAddrs []ma.Multiaddr
 	if resolved, err := addrutil.ResolveUnspecifiedAddresses(listenAddrs, filteredIfaceAddrs); err != nil {
 		// This can happen if we're listening on no addrs, or listening
@@ -814,8 +845,8 @@ func (h *BasicHost) AllAddrs() []ma.Multiaddr {
 	// but not have an external network card,
 	// so net.InterfaceAddrs() not has the public ip
 	// The host can indeed be dialed ！！！
-	if h.AutoNat != nil {
-		publicAddr, _ := h.AutoNat.PublicAddr()
+	if autonat != nil {
+		publicAddr, _ := autonat.PublicAddr()
 		if publicAddr != nil {
 			finalAddrs = append(finalAddrs, publicAddr)
 		}
@@ -975,6 +1006,22 @@ func (h *BasicHost) AllAddrs() []ma.Multiaddr {
 	return dedupAddrs(finalAddrs)
 }
 
+// SetAutoNat sets the autonat service for the host.
+func (h *BasicHost) SetAutoNat(a autonat.AutoNAT) {
+	h.addrMu.Lock()
+	defer h.addrMu.Unlock()
+	if h.autoNat == nil {
+		h.autoNat = a
+	}
+}
+
+// Return the host's AutoNAT service, if AutoNAT is enabled.
+func (h *BasicHost) GetAutoNat() autonat.AutoNAT {
+	h.addrMu.Lock()
+	defer h.addrMu.Unlock()
+	return h.autoNat
+}
+
 // Close shuts down the Host's services (network, etc).
 func (h *BasicHost) Close() error {
 	h.closeSync.Do(func() {
@@ -992,6 +1039,10 @@ func (h *BasicHost) Close() error {
 		_ = h.emitters.evtLocalProtocolsUpdated.Close()
 		_ = h.emitters.evtLocalAddrsUpdated.Close()
 		h.Network().Close()
+
+		if h.Peerstore() != nil {
+			h.Peerstore().Close()
+		}
 
 		h.refCount.Wait()
 	})

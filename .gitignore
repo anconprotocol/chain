@@ -16,3 +16,6 @@ main
 # MacOS Leftovers
 .DS_Store
 .vscode
+
+
+vendor
