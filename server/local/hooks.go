@@ -24,7 +24,6 @@ import (
 
 // 	// MetadataTransferOwnershipEvent represent the signature of
 // 	// `event InitiateMetadataTransferOwnership(address fromOwner, address toOwner, string memory metadataUri)`
-
 func MetadataTransferOwnershipEvent() abi.Event {
 
 	addressType, _ := abi.NewType("address", "", nil)
@@ -64,7 +63,11 @@ func PostTxProcessing(s anconsync.Storage, t *state.Transition) error {
 		// 	// Check the contract whitelist to prevent accidental native call.
 		// 	continue
 		// }
-		_, err := MetadataTransferOwnershipEvent().Inputs.Unpack(log.Data)
+		values, err := MetadataTransferOwnershipEvent().Inputs.Unpack(log.Data)
+		if err != nil {
+			return err
+		}
+		fmt.Println(values...)
 
 		if err != nil {
 			continue
@@ -79,11 +82,6 @@ func PostTxProcessing(s anconsync.Storage, t *state.Transition) error {
 func GetHooks(s anconsync.Storage) func(t *state.Transition) {
 	return func(t *state.Transition) {
 		PostTxProcessing(s, t)
-		// logs := t.Txn().Logs()
-
-		// // for _, log := range logs {
-		// // 	log.Topics
-		// // }
 	}
 }
 

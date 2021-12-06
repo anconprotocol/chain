@@ -6,5 +6,5 @@ rm genesis.json
 
 
 
-go run main.go dev --log-level debug  --dev-interval 5  --premine 0x32A21c1bB6E7C20F547e930b53dAC57f42cd25F6
+go run main.go dev --log-level debug  --dev-interval 5  --premine 0x32A21c1bB6E7C20F547e930b53dAC57f42cd25F6  --locals 0x32A21c1bB6E7C20F547e930b53dAC57f42cd25F6 --dev-interval 2
 
