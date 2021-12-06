@@ -75,6 +75,7 @@ func PostTxProcessing(s anconsync.Storage, t *state.Transition) error {
 		if err != nil {
 			return err
 		}
+		break
 	}
 	return nil
 }
