@@ -5,6 +5,7 @@ go 1.14
 require (
 	github.com/anconprotocol/node v0.0.0-20211206142505-b3e9a67f7ada
 	github.com/btcsuite/btcd v0.22.0-beta
+	github.com/ethereum/go-ethereum v1.10.13
 	github.com/go-kit/kit v0.12.0
 	github.com/golang/protobuf v1.5.2
 	github.com/google/uuid v1.3.0
@@ -16,8 +17,11 @@ require (
 	github.com/hashicorp/hcl v1.0.0
 	github.com/hashicorp/vault/api v1.3.0
 	github.com/imdario/mergo v0.3.8
+	github.com/ipfs/go-graphsync v0.9.3
+	github.com/ipld/go-ipld-prime v0.14.0
 	github.com/libp2p/go-libp2p v0.14.4
 	github.com/libp2p/go-libp2p-core v0.8.6
+	github.com/libp2p/go-libp2p-kad-dht v0.13.1
 	github.com/libp2p/go-libp2p-kbucket v0.4.7
 	github.com/libp2p/go-libp2p-noise v0.2.0
 	github.com/libp2p/go-libp2p-pubsub v0.4.1

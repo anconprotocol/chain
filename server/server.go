@@ -17,6 +17,7 @@ import (
 	"github.com/0xPolygon/polygon-sdk/jsonrpc"
 	"github.com/0xPolygon/polygon-sdk/network"
 	"github.com/0xPolygon/polygon-sdk/secrets"
+	"github.com/0xPolygon/polygon-sdk/server/local"
 	"github.com/0xPolygon/polygon-sdk/server/proto"
 	"github.com/0xPolygon/polygon-sdk/state"
 	"github.com/0xPolygon/polygon-sdk/state/runtime"
@@ -137,7 +138,12 @@ func NewServer(logger hclog.Logger, config *Config) (*Server, error) {
 	m.executor = state.NewExecutor(config.Chain.Params, st, logger)
 	m.executor.SetRuntime(precompiled.NewPrecompiled())
 	m.executor.SetRuntime(evm.NewEVM())
-	m.executor.PostHook = anconsync.GetHooks(m.dagStorage)
+	m.executor.PostHook = local.GetHooks(m.dagStorage)
+
+	// Graphsync works!
+	// local.NewRouter(context.Background(), m.network.Host, m.dagStorage)
+	// pi, _ := peer.AddrInfoFromP2pAddr(multiaddr.StringCast("/ip4/192.168.50.138/tcp/7702/p2p/12D3KooWGAqZbkZrrZgutvUhq1Z7hRQR3Dym2uAKkvVjtvksHHZx"))
+	// m.network.Host.Connect(context.Background(), *pi)
 
 	// compute the genesis root state
 	genesisRoot := m.executor.WriteGenesis(config.Chain.Genesis.Alloc)

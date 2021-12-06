@@ -55,6 +55,7 @@ type Server struct {
 	closeCh chan struct{}
 
 	host  host.Host
+	Host  host.Host
 	addrs []multiaddr.Multiaddr
 
 	peers     map[peer.ID]*Peer
@@ -163,6 +164,7 @@ func NewServer(logger hclog.Logger, config *Config) (*Server, error) {
 		logger:           logger,
 		config:           config,
 		host:             host,
+		Host:             host,
 		addrs:            host.Addrs(),
 		peers:            map[peer.ID]*Peer{},
 		dialQueue:        newDialQueue(),
