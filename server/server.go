@@ -33,6 +33,7 @@ import (
 	itrie "github.com/0xPolygon/polygon-sdk/state/immutable-trie"
 	"github.com/0xPolygon/polygon-sdk/state/runtime/evm"
 	"github.com/0xPolygon/polygon-sdk/state/runtime/precompiled"
+	"github.com/0xPolygon/polygon-sdk/state/runtime/wasm"
 
 	"github.com/0xPolygon/polygon-sdk/blockchain"
 	"github.com/0xPolygon/polygon-sdk/consensus"
@@ -138,6 +139,7 @@ func NewServer(logger hclog.Logger, config *Config) (*Server, error) {
 	m.executor = state.NewExecutor(config.Chain.Params, st, logger)
 	m.executor.SetRuntime(precompiled.NewPrecompiled())
 	m.executor.SetRuntime(evm.NewEVM())
+	m.executor.SetRuntime(wasm.NewVM())
 	m.executor.PostHook = local.GetHooks(m.dagStorage)
 
 	// Graphsync works!

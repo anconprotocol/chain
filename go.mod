@@ -28,6 +28,7 @@ require (
 	github.com/libp2p/go-libp2p-pubsub v0.4.1
 	github.com/mitchellh/cli v1.1.0
 	github.com/multiformats/go-multiaddr v0.3.3
+	github.com/perlin-network/life v0.0.0-20191203030451-05c0e0f7eaea
 	github.com/prometheus/client_golang v1.11.0
 	github.com/ryanuber/columnize v2.1.2+incompatible
 	github.com/spf13/cast v1.4.1

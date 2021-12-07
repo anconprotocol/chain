@@ -452,7 +452,7 @@ func (t *Transition) Create2(caller types.Address, code []byte, value *big.Int, 
 func (t *Transition) Call2(caller types.Address, to types.Address, input []byte, value *big.Int, gas uint64) *runtime.ExecutionResult {
 	c := runtime.NewContractCall(1, caller, caller, to, value, gas, t.state.GetCode(to), input)
 	return t.applyCall(c, runtime.Call, t)
-}
+}	
 
 func (t *Transition) run(contract *runtime.Contract, host runtime.Host) *runtime.ExecutionResult {
 	for _, r := range t.r.runtimes {
