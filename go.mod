@@ -17,6 +17,7 @@ require (
 	github.com/hashicorp/hcl v1.0.0
 	github.com/hashicorp/vault/api v1.3.0
 	github.com/imdario/mergo v0.3.8
+	github.com/ipfs/go-cid v0.1.0
 	github.com/ipfs/go-graphsync v0.9.3
 	github.com/ipld/go-ipld-prime v0.14.0
 	github.com/libp2p/go-libp2p v0.14.4

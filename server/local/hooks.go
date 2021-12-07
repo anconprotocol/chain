@@ -4,10 +4,13 @@ import (
 	"context"
 	"fmt"
 
+	"github.com/ipfs/go-cid"
 	gsync "github.com/ipfs/go-graphsync"
 	graphsync "github.com/ipfs/go-graphsync/impl"
 	gsnet "github.com/ipfs/go-graphsync/network"
 
+	"github.com/ipld/go-ipld-prime/datamodel"
+	cidlink "github.com/ipld/go-ipld-prime/linking/cid"
 	"github.com/ipld/go-ipld-prime/node/basicnode"
 	"github.com/libp2p/go-libp2p-core/host"
 	dht "github.com/libp2p/go-libp2p-kad-dht"
@@ -47,35 +50,90 @@ func MetadataTransferOwnershipEvent() abi.Event {
 		}},
 	)
 }
+func EncodeDagJsonEvent() abi.Event {
+
+	str, _ := abi.NewType("string", "", nil)
+	return abi.NewEvent(
+		"EncodeDagJson",
+		"EncodeDagJson",
+		false,
+		abi.Arguments{abi.Argument{
+			Name:    "path",
+			Type:    str,
+			Indexed: false,
+		}, abi.Argument{
+			Name:    "data",
+			Type:    str,
+			Indexed: false,
+		}},
+	)
+}
+func encodeDagBlock(inputs abi.Arguments, data []byte) (datamodel.Node, datamodel.Link, error) {
+
+	props, err := inputs.Unpack(data)
+	if err != nil {
+		return nil, nil, err
+	}
+
+///	path := props[0].(string)
+	values := props[1].(string)
+
+	n, _:= anconsync.Decode(basicnode.Prototype.Any,values)
+	p := cidlink.LinkPrototype{cid.Prefix{
+		Version:  1,
+		Codec:    0x0129,
+		MhType:   0x12, // sha2-256
+		MhLength: 32,   // sha2-256 hash has a 32-byte sum.
+	}}
+
+	lnk := p.BuildLink(data)
+
+	if err != nil {
+		return nil, nil, err
+	}
+
+	return n, lnk, nil
+}
 
 func PostTxProcessing(s anconsync.Storage, t *state.Transition) error {
 	for _, log := range t.Txn().Logs() {
 		for _, topic := range log.Topics {
-			if common.Hash(topic) != MetadataTransferOwnershipEvent().ID {
+
+			if len(log.Topics) == 0 {
 				continue
 			}
-		}
-		if len(log.Topics) == 0 {
-			continue
-		}
 
-		// if !ContractAllowed(log.Address) {
-		// 	// Check the contract whitelist to prevent accidental native call.
-		// 	continue
-		// }
-		values, err := MetadataTransferOwnershipEvent().Inputs.Unpack(log.Data)
-		if err != nil {
-			return err
-		}
-		fmt.Println(values...)
+			var node datamodel.Node
+			var lnk datamodel.Link
+			var err error
+			switch {
+			case common.Hash(topic) == MetadataTransferOwnershipEvent().ID:
+				break
+			case common.Hash(topic) == EncodeDagJsonEvent().ID:
+				node, lnk, err = encodeDagBlock(EncodeDagJsonEvent().Inputs, log.Data)
+				if err != nil {
+					return err
+				}
 
-		if err != nil {
-			continue
+			default:
+				break
+			}
+			// if !ContractAllowed(log.Address) {
+			// 	// Check the contract whitelist to prevent accidental native call.
+			// 	continue
+			// }
+			fmt.Println(lnk.String())
+			fmt.Println(node)
+			t.EmitLog(log.Address, log.Topics, []byte(lnk.String()))
+
+			if err != nil {
+				continue
+			}
+			if err != nil {
+				return err
+			}
+			return nil
 		}
-		if err != nil {
-			return err
-		}
-		break
 	}
 	return nil
 }
