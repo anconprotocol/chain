@@ -7,6 +7,7 @@ import (
 	"github.com/ipfs/go-cid"
 	gsync "github.com/ipfs/go-graphsync"
 	graphsync "github.com/ipfs/go-graphsync/impl"
+	"github.com/ipfs/go-graphsync/ipldutil"
 	gsnet "github.com/ipfs/go-graphsync/network"
 
 	"github.com/ipld/go-ipld-prime/datamodel"
@@ -16,6 +17,7 @@ import (
 	dht "github.com/libp2p/go-libp2p-kad-dht"
 
 	"github.com/0xPolygon/polygon-sdk/state"
+	"github.com/0xPolygon/polygon-sdk/types"
 	"github.com/anconprotocol/node/x/anconsync"
 	"github.com/ethereum/go-ethereum/accounts/abi"
 	"github.com/ethereum/go-ethereum/common"
@@ -96,7 +98,7 @@ func StoreDagBlockDoneEvent() abi.Event {
 		}},
 	)
 }
-func encodeDagCborBlock(inputs abi.Arguments, data []byte) (datamodel.Node, datamodel.Link, error) {
+func encodeDagCborBlock(s anconsync.Storage, inputs abi.Arguments, data []byte, txHash types.Hash, blockHash types.Hash, chainID int64) (datamodel.Node, datamodel.Link, error) {
 
 	props, err := inputs.Unpack(data)
 	if err != nil {
@@ -105,11 +107,12 @@ func encodeDagCborBlock(inputs abi.Arguments, data []byte) (datamodel.Node, data
 
 	///	path := props[0].(string)
 	values := props[1].(string)
+	bz := common.Hex2Bytes(values)
 
-	n, _ := anconsync.Decode(basicnode.Prototype.Any, values)
+	n, _ := ipldutil.DecodeNode(bz)
 	p := cidlink.LinkPrototype{cid.Prefix{
 		Version:  1,
-		Codec:    0x0129,
+		Codec:    cid.DagCBOR,
 		MhType:   0x12, // sha2-256
 		MhLength: 32,   // sha2-256 hash has a 32-byte sum.
 	}}
@@ -141,7 +144,7 @@ func EncodeDagJsonEvent() abi.Event {
 		}},
 	)
 }
-func encodeDagJsonBlock(inputs abi.Arguments, data []byte) (datamodel.Node, datamodel.Link, error) {
+func encodeDagJsonBlock(s anconsync.Storage, inputs abi.Arguments, data []byte, txHash, blockHash types.Hash, chainID int64) (datamodel.Node, datamodel.Link, error) {
 
 	props, err := inputs.Unpack(data)
 	if err != nil {
@@ -179,7 +182,8 @@ func PostTxProcessing(s anconsync.Storage, t *state.Transition) error {
 			if len(log.Topics) == 0 {
 				continue
 			}
-
+			txHash := t.GetTxnHash()
+			blockHash := t.GetBlockHash(t.GetTxContext().Number)
 			var node datamodel.Node
 			var lnk datamodel.Link
 			var err error
@@ -188,13 +192,19 @@ func PostTxProcessing(s anconsync.Storage, t *state.Transition) error {
 
 				break
 			case common.Hash(topic) == EncodeDagJsonEvent().ID:
-				node, lnk, err = encodeDagJsonBlock(EncodeDagJsonEvent().Inputs, log.Data)
+				node, lnk, err = encodeDagJsonBlock(s, EncodeDagJsonEvent().Inputs, log.Data, txHash, blockHash, t.GetTxContext().ChainID)
+				if err != nil {
+					return err
+				}
+
+			case common.Hash(topic) == EncodeDagCborEvent().ID:
+				node, lnk, err = encodeDagCborBlock(s, EncodeDagCborEvent().Inputs, log.Data, txHash, blockHash, t.GetTxContext().ChainID)
 				if err != nil {
 					return err
 				}
 
 			default:
-				break
+				return fmt.Errorf("failed to decode")
 			}
 			// if !ContractAllowed(log.Address) {
 			// 	// Check the contract whitelist to prevent accidental native call.
@@ -202,11 +212,9 @@ func PostTxProcessing(s anconsync.Storage, t *state.Transition) error {
 			// }
 			fmt.Println(lnk.String())
 			fmt.Println(node)
+			StoreDagBlockDoneEvent().Inputs.Pack()
 			t.EmitLog(log.Address, log.Topics, []byte(lnk.String()))
 
-			if err != nil {
-				continue
-			}
 			if err != nil {
 				return err
 			}
