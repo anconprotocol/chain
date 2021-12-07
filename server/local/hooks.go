@@ -2,6 +2,7 @@ package local
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 
 	"github.com/ipfs/go-cid"
@@ -26,11 +27,14 @@ import (
 	"github.com/ethereum/go-ethereum/common/hexutil"
 
 	"github.com/libp2p/go-libp2p-core/peer"
+
+	"github.com/spf13/cast"
 )
 
 func MetadataTransferOwnershipEvent() abi.Event {
 
 	stringType, _ := abi.NewType("string", "", nil)
+	bytesType, _ := abi.NewType("bytes", "", nil)
 	return abi.NewEvent(
 		"AddOnchainMetadata",
 		"AddOnchainMetadata",
@@ -57,7 +61,7 @@ func MetadataTransferOwnershipEvent() abi.Event {
 			Indexed: true,
 		}, abi.Argument{
 			Name:    "sources",
-			Type:    stringType,
+			Type:    bytesType,
 			Indexed: false,
 		}},
 	)
@@ -100,6 +104,7 @@ func StoreDagBlockDoneEvent() abi.Event {
 		}},
 	)
 }
+
 func encodeDagCborBlock(s anconsync.Storage, inputs abi.Arguments, data []byte, txHash types.Hash, blockHash types.Hash, chainID int64) (datamodel.Node, datamodel.Link, error) {
 
 	props, err := inputs.Unpack(data)
@@ -131,6 +136,82 @@ func encodeDagCborBlock(s anconsync.Storage, inputs abi.Arguments, data []byte, 
 	}, p, n)
 
 	// lnk := p.BuildLink(data)
+
+	if err != nil {
+		return nil, nil, err
+	}
+
+	return n, lnk, nil
+}
+
+func encodeAnconMetadata(s anconsync.Storage, inputs abi.Arguments, data []byte, txHash types.Hash, blockHash types.Hash, chainID int64) (datamodel.Node, datamodel.Link, error) {
+
+	props, err := inputs.Unpack(data)
+
+	values := props[5].(string)
+	bz := common.Hex2Bytes(values)
+
+	var sources map[string]string
+
+	js := hexutil.Bytes{}
+	js.UnmarshalJSON(bz)
+
+	err = json.Unmarshal(js, &sources)
+
+	if err != nil {
+		return nil, nil, err
+	}
+
+	n := fluent.MustBuildMap(basicnode.Prototype.Map, 10, func(na fluent.MapAssembler) {
+		// TODO:
+		na.AssembleEntry("name").AssignString(props[0].(string))
+		na.AssembleEntry("description").AssignString(props[1].(string))
+		na.AssembleEntry("image").AssignString(props[2].(string))
+
+		na.AssembleEntry("owner").AssignString(props[3].(string))
+
+		if props[4] != nil {
+			na.AssembleEntry("parent").AssignString(props[4].(string))
+		} else {
+			na.AssembleEntry("parent").AssignNull()
+		}
+
+		// Sources
+		if len(sources) > 0 {
+
+			na.AssembleEntry("sources").CreateList(cast.ToInt64(len(sources)), func(la fluent.ListAssembler) {
+				for _, v := range sources {
+					lnk, err := anconsync.ParseCidLink((v))
+					if err != nil {
+						continue
+					}
+					la.AssembleValue().AssignLink(lnk)
+
+				}
+			})
+
+		} else {
+			na.AssembleEntry("sources").AssignNull()
+		}
+
+	})
+
+	transactionBlock := fluent.MustBuildMap(basicnode.Prototype.Any, 3, func(ma fluent.MapAssembler) {
+		ma.AssembleEntry("transactionHash").AssignBytes(txHash[:])
+		ma.AssembleEntry("blockHash").AssignBytes(blockHash.Bytes())
+		ma.AssembleEntry("chainId").AssignInt(chainID)
+	})
+
+	p := cidlink.LinkPrototype{cid.Prefix{
+		Version:  1,
+		Codec:    cid.DagCBOR,
+		MhType:   0x12, // sha2-256
+		MhLength: 32,   // sha2-256 hash has a 32-byte sum.
+	}}
+
+	lnk, err := s.LinkSystem.Store(ipld.LinkContext{
+		LinkNode: transactionBlock,
+	}, p, n)
 
 	if err != nil {
 		return nil, nil, err

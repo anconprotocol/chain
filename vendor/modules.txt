@@ -503,6 +503,9 @@ github.com/ryanuber/go-glob
 github.com/spacemonkeygo/spacelog
 # github.com/spaolacci/murmur3 v1.1.0
 github.com/spaolacci/murmur3
+# github.com/spf13/cast v1.4.1
+## explicit
+github.com/spf13/cast
 # github.com/stretchr/testify v1.7.0
 ## explicit
 github.com/stretchr/testify/assert
