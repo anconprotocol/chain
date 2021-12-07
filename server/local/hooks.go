@@ -159,6 +159,12 @@ func encodeDagJsonBlock(s anconsync.Storage, inputs abi.Arguments, data []byte, 
 	js.UnmarshalJSON(bz)
 
 	n, _ := anconsync.Decode(basicnode.Prototype.Any, string(js))
+
+	// parentBlockBuilder := fluent.MustBuildMap(basicnode.Prototype.Any, 4, func(ma fluent.MapAssembler) {
+	// 	ma.AssembleEntry("blockHash").AssignBytes(blockHash.Bytes())
+	// 	ma.AssembleEntry("chainId").AssignInt(chainID)
+	// 	ma.AssembleEntry("li")
+	// })
 	p := cidlink.LinkPrototype{cid.Prefix{
 		Version:  1,
 		Codec:    0x0129,
