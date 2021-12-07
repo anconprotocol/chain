@@ -19,37 +19,110 @@ import (
 	"github.com/anconprotocol/node/x/anconsync"
 	"github.com/ethereum/go-ethereum/accounts/abi"
 	"github.com/ethereum/go-ethereum/common"
+	"github.com/ethereum/go-ethereum/common/hexutil"
 
 	"github.com/libp2p/go-libp2p-core/peer"
 )
 
-// 	// event AddOnchainMetadata(string memory name, string memory description, string indexed memory image, string memory owner, string memory parent, bytes memory sources)
-
-// 	// MetadataTransferOwnershipEvent represent the signature of
-// 	// `event InitiateMetadataTransferOwnership(address fromOwner, address toOwner, string memory metadataUri)`
 func MetadataTransferOwnershipEvent() abi.Event {
 
-	addressType, _ := abi.NewType("address", "", nil)
 	stringType, _ := abi.NewType("string", "", nil)
 	return abi.NewEvent(
-		"InitiateMetadataTransferOwnership",
-		"InitiateMetadataTransferOwnership",
+		"AddOnchainMetadata",
+		"AddOnchainMetadata",
 		false,
 		abi.Arguments{abi.Argument{
-			Name:    "fromOwner",
-			Type:    addressType,
+			Name:    "name",
+			Type:    stringType,
 			Indexed: false,
 		}, abi.Argument{
-			Name:    "toOwner",
-			Type:    addressType,
+			Name:    "description",
+			Type:    stringType,
 			Indexed: false,
 		}, abi.Argument{
-			Name:    "metadataUri",
+			Name:    "image",
+			Type:    stringType,
+			Indexed: true,
+		}, abi.Argument{
+			Name:    "owner",
+			Type:    stringType,
+			Indexed: true,
+		}, abi.Argument{
+			Name:    "parent",
+			Type:    stringType,
+			Indexed: true,
+		}, abi.Argument{
+			Name:    "sources",
 			Type:    stringType,
 			Indexed: false,
 		}},
 	)
 }
+
+func EncodeDagCborEvent() abi.Event {
+
+	str, _ := abi.NewType("string", "", nil)
+	return abi.NewEvent(
+		"EncodeDagCbor",
+		"EncodeDagCbor",
+		false,
+		abi.Arguments{abi.Argument{
+			Name:    "path",
+			Type:    str,
+			Indexed: false,
+		}, abi.Argument{
+			Name:    "hexdata",
+			Type:    str,
+			Indexed: false,
+		}},
+	)
+}
+
+func StoreDagBlockDoneEvent() abi.Event {
+
+	str, _ := abi.NewType("string", "", nil)
+	return abi.NewEvent(
+		"StoreDagBlockDone",
+		"StoreDagBlockDone",
+		false,
+		abi.Arguments{abi.Argument{
+			Name:    "path",
+			Type:    str,
+			Indexed: false,
+		}, abi.Argument{
+			Name:    "cid",
+			Type:    str,
+			Indexed: true,
+		}},
+	)
+}
+func encodeDagCborBlock(inputs abi.Arguments, data []byte) (datamodel.Node, datamodel.Link, error) {
+
+	props, err := inputs.Unpack(data)
+	if err != nil {
+		return nil, nil, err
+	}
+
+	///	path := props[0].(string)
+	values := props[1].(string)
+
+	n, _ := anconsync.Decode(basicnode.Prototype.Any, values)
+	p := cidlink.LinkPrototype{cid.Prefix{
+		Version:  1,
+		Codec:    0x0129,
+		MhType:   0x12, // sha2-256
+		MhLength: 32,   // sha2-256 hash has a 32-byte sum.
+	}}
+
+	lnk := p.BuildLink(data)
+
+	if err != nil {
+		return nil, nil, err
+	}
+
+	return n, lnk, nil
+}
+
 func EncodeDagJsonEvent() abi.Event {
 
 	str, _ := abi.NewType("string", "", nil)
@@ -62,23 +135,27 @@ func EncodeDagJsonEvent() abi.Event {
 			Type:    str,
 			Indexed: false,
 		}, abi.Argument{
-			Name:    "data",
+			Name:    "hexdata",
 			Type:    str,
 			Indexed: false,
 		}},
 	)
 }
-func encodeDagBlock(inputs abi.Arguments, data []byte) (datamodel.Node, datamodel.Link, error) {
+func encodeDagJsonBlock(inputs abi.Arguments, data []byte) (datamodel.Node, datamodel.Link, error) {
 
 	props, err := inputs.Unpack(data)
 	if err != nil {
 		return nil, nil, err
 	}
 
-///	path := props[0].(string)
+	///	path := props[0].(string)
 	values := props[1].(string)
+	bz := common.Hex2Bytes(values)
 
-	n, _:= anconsync.Decode(basicnode.Prototype.Any,values)
+	js := hexutil.Bytes{}
+	js.UnmarshalJSON(bz)
+
+	n, _ := anconsync.Decode(basicnode.Prototype.Any, string(js))
 	p := cidlink.LinkPrototype{cid.Prefix{
 		Version:  1,
 		Codec:    0x0129,
@@ -108,9 +185,10 @@ func PostTxProcessing(s anconsync.Storage, t *state.Transition) error {
 			var err error
 			switch {
 			case common.Hash(topic) == MetadataTransferOwnershipEvent().ID:
+
 				break
 			case common.Hash(topic) == EncodeDagJsonEvent().ID:
-				node, lnk, err = encodeDagBlock(EncodeDagJsonEvent().Inputs, log.Data)
+				node, lnk, err = encodeDagJsonBlock(EncodeDagJsonEvent().Inputs, log.Data)
 				if err != nil {
 					return err
 				}
