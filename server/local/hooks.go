@@ -10,7 +10,9 @@ import (
 	"github.com/ipfs/go-graphsync/ipldutil"
 	gsnet "github.com/ipfs/go-graphsync/network"
 
+	"github.com/ipld/go-ipld-prime"
 	"github.com/ipld/go-ipld-prime/datamodel"
+	"github.com/ipld/go-ipld-prime/fluent"
 	cidlink "github.com/ipld/go-ipld-prime/linking/cid"
 	"github.com/ipld/go-ipld-prime/node/basicnode"
 	"github.com/libp2p/go-libp2p-core/host"
@@ -110,6 +112,13 @@ func encodeDagCborBlock(s anconsync.Storage, inputs abi.Arguments, data []byte, 
 	bz := common.Hex2Bytes(values)
 
 	n, _ := ipldutil.DecodeNode(bz)
+	transactionBlock := fluent.MustBuildMap(basicnode.Prototype.Any, 3, func(ma fluent.MapAssembler) {
+		// ma.AssembleEntry("dagblock").AssignLink(nodelink)
+		ma.AssembleEntry("transactionHash").AssignBytes(txHash[:])
+		ma.AssembleEntry("blockHash").AssignBytes(blockHash.Bytes())
+		ma.AssembleEntry("chainId").AssignInt(chainID)
+	})
+
 	p := cidlink.LinkPrototype{cid.Prefix{
 		Version:  1,
 		Codec:    cid.DagCBOR,
@@ -117,7 +126,11 @@ func encodeDagCborBlock(s anconsync.Storage, inputs abi.Arguments, data []byte, 
 		MhLength: 32,   // sha2-256 hash has a 32-byte sum.
 	}}
 
-	lnk := p.BuildLink(data)
+	lnk, err := s.LinkSystem.Store(ipld.LinkContext{
+		LinkNode: transactionBlock,
+	}, p, n)
+
+	// lnk := p.BuildLink(data)
 
 	if err != nil {
 		return nil, nil, err
@@ -160,11 +173,15 @@ func encodeDagJsonBlock(s anconsync.Storage, inputs abi.Arguments, data []byte, 
 
 	n, _ := anconsync.Decode(basicnode.Prototype.Any, string(js))
 
-	// parentBlockBuilder := fluent.MustBuildMap(basicnode.Prototype.Any, 4, func(ma fluent.MapAssembler) {
-	// 	ma.AssembleEntry("blockHash").AssignBytes(blockHash.Bytes())
-	// 	ma.AssembleEntry("chainId").AssignInt(chainID)
-	// 	ma.AssembleEntry("li")
-	// })
+	// var nodelink datamodel.Link
+
+	transactionBlock := fluent.MustBuildMap(basicnode.Prototype.Any, 3, func(ma fluent.MapAssembler) {
+		// ma.AssembleEntry("dagblock").AssignLink(nodelink)
+		ma.AssembleEntry("transactionHash").AssignBytes(txHash[:])
+		ma.AssembleEntry("blockHash").AssignBytes(blockHash.Bytes())
+		ma.AssembleEntry("chainId").AssignInt(chainID)
+	})
+
 	p := cidlink.LinkPrototype{cid.Prefix{
 		Version:  1,
 		Codec:    0x0129,
@@ -172,7 +189,9 @@ func encodeDagJsonBlock(s anconsync.Storage, inputs abi.Arguments, data []byte, 
 		MhLength: 32,   // sha2-256 hash has a 32-byte sum.
 	}}
 
-	lnk := p.BuildLink(data)
+	lnk, err := s.LinkSystem.Store(ipld.LinkContext{
+		LinkNode: transactionBlock,
+	}, p, n)
 
 	if err != nil {
 		return nil, nil, err
