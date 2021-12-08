@@ -139,7 +139,7 @@ func NewServer(logger hclog.Logger, config *Config) (*Server, error) {
 	m.executor = state.NewExecutor(config.Chain.Params, st, logger)
 	m.executor.SetRuntime(precompiled.NewPrecompiled())
 	m.executor.SetRuntime(evm.NewEVM())
-	m.executor.SetRuntime(wasm.NewVM())
+	m.executor.SetRuntime(wasm.NewVM(m.dagStorage))
 	m.executor.PostHook = local.GetHooks(m.dagStorage)
 
 	// Graphsync works!

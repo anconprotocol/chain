@@ -3,6 +3,7 @@ package evm
 import (
 	"github.com/0xPolygon/polygon-sdk/chain"
 	"github.com/0xPolygon/polygon-sdk/state/runtime"
+	wasm_validation "github.com/perlin-network/life/wasm-validation"
 )
 
 var _ runtime.Runtime = &EVM{}
@@ -17,8 +18,12 @@ func NewEVM() *EVM {
 }
 
 // CanRun implements the runtime interface
-func (e *EVM) CanRun(*runtime.Contract, runtime.Host, *chain.ForksInTime) bool {
-	return true
+func (e *EVM) CanRun(c *runtime.Contract, _ runtime.Host, _ *chain.ForksInTime) bool {
+	if err := wasm_validation.ValidateWasm(c.Code); err != nil {
+		return true
+	}
+	return false
+
 }
 
 // Name implements the runtime interface

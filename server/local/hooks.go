@@ -31,7 +31,7 @@ import (
 	"github.com/spf13/cast"
 )
 
-func MetadataTransferOwnershipEvent() abi.Event {
+func AddOnchainMetadataEvent() abi.Event {
 
 	stringType, _ := abi.NewType("string", "", nil)
 	bytesType, _ := abi.NewType("bytes", "", nil)
@@ -50,15 +50,15 @@ func MetadataTransferOwnershipEvent() abi.Event {
 		}, abi.Argument{
 			Name:    "image",
 			Type:    stringType,
-			Indexed: true,
+			Indexed: false,
 		}, abi.Argument{
 			Name:    "owner",
 			Type:    stringType,
-			Indexed: true,
+			Indexed: false,
 		}, abi.Argument{
 			Name:    "parent",
 			Type:    stringType,
-			Indexed: true,
+			Indexed: false,
 		}, abi.Argument{
 			Name:    "sources",
 			Type:    bytesType,
@@ -148,8 +148,8 @@ func encodeAnconMetadata(s anconsync.Storage, inputs abi.Arguments, data []byte,
 
 	props, err := inputs.Unpack(data)
 
-	values := props[5].(string)
-	bz := common.Hex2Bytes(values)
+	bz := props[5].([]byte)
+	// bz := common.Hex2Bytes(values)
 
 	var sources map[string]string
 
@@ -288,26 +288,21 @@ func PostTxProcessing(s anconsync.Storage, t *state.Transition) error {
 			if len(log.Topics) == 0 {
 				continue
 			}
-			txHash := t.GetTxnHash()
 			blockHash := t.GetBlockHash(t.GetTxContext().Number)
+			txHash := blockHash
+
 			var node datamodel.Node
 			var lnk datamodel.Link
 			var err error
 			switch {
-			case common.Hash(topic) == MetadataTransferOwnershipEvent().ID:
+			case common.Hash(topic) == AddOnchainMetadataEvent().ID:
+				node, lnk, err = encodeAnconMetadata(s, AddOnchainMetadataEvent().Inputs, log.Data, txHash, blockHash, t.GetTxContext().ChainID)
 
-				break
 			case common.Hash(topic) == EncodeDagJsonEvent().ID:
 				node, lnk, err = encodeDagJsonBlock(s, EncodeDagJsonEvent().Inputs, log.Data, txHash, blockHash, t.GetTxContext().ChainID)
-				if err != nil {
-					return err
-				}
 
 			case common.Hash(topic) == EncodeDagCborEvent().ID:
 				node, lnk, err = encodeDagCborBlock(s, EncodeDagCborEvent().Inputs, log.Data, txHash, blockHash, t.GetTxContext().ChainID)
-				if err != nil {
-					return err
-				}
 
 			default:
 				return fmt.Errorf("failed to decode")
@@ -316,6 +311,10 @@ func PostTxProcessing(s anconsync.Storage, t *state.Transition) error {
 			// 	// Check the contract whitelist to prevent accidental native call.
 			// 	continue
 			// }
+			if err != nil {
+				return err
+			}
+
 			fmt.Println(lnk.String())
 			fmt.Println(node)
 			StoreDagBlockDoneEvent().Inputs.Pack()
