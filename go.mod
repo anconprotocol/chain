@@ -37,6 +37,7 @@ require (
 	github.com/umbracle/fastrlp v0.0.0-20210128110402-41364ca56ca8
 	github.com/umbracle/go-eth-bn256 v0.0.0-20190607160430-b36caf4e0f6b
 	github.com/umbracle/go-web3 v0.0.0-20210427125755-b411b4019e22
+	github.com/wasmerio/wasmer-go v1.0.4
 	golang.org/x/crypto v0.0.0-20210921155107-089bfa567519
 	google.golang.org/grpc v1.42.0
 	google.golang.org/protobuf v1.27.1

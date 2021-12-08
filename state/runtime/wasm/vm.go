@@ -1,16 +1,17 @@
 package wasm
 
 import (
-	"fmt"
-	"strconv"
+	"encoding/json"
+	"io/ioutil"
 
 	"github.com/0xPolygon/polygon-sdk/chain"
 	"github.com/0xPolygon/polygon-sdk/state/runtime"
 	"github.com/anconprotocol/node/x/anconsync"
-	"github.com/ethereum/go-ethereum/rlp"
-	"github.com/perlin-network/life/exec"
+	"github.com/ethereum/go-ethereum/common/hexutil"
 	wasm_validation "github.com/perlin-network/life/wasm-validation"
 	"github.com/spf13/cast"
+
+	wasmer "github.com/wasmerio/wasmer-go/wasmer"
 )
 
 var _ runtime.Runtime = &WASM{}
@@ -22,12 +23,14 @@ type contract interface {
 
 // WASM is the ethereum virtual machine
 type WASM struct {
-	store anconsync.Storage
+	engine *wasmer.Engine
+	store  anconsync.Storage
 }
 
 // NewEVM creates a new WASM
 func NewVM(s anconsync.Storage) *WASM {
-	return &WASM{store: s}
+	engine := wasmer.NewEngine()
+	return &WASM{store: s, engine: engine}
 }
 
 // CanRun implements the runtime interface
@@ -46,63 +49,42 @@ func (e *WASM) Name() string {
 // Run implements the runtime interface
 func (e *WASM) Run(c *runtime.Contract, host runtime.Host, config *chain.ForksInTime) *runtime.ExecutionResult {
 
-	// Instantiate a new WebAssembly VM with a few resolved imports.
-	vm, err := exec.NewVirtualMachine(c.Code, exec.VMConfig{
-		DefaultMemoryPages: 128,
-		DefaultTableSize:   65536,
-		// DisableFloatingPoint: *noFloatingPointFlag,
-	}, nil, nil)
+	wasmBytes, _ := ioutil.ReadFile("/home/rogelio/Code/polygon-sdk/simple.wasm")
+	arr := make([]int64, 2)
+	arr[0] = 5
+	arr[1] = 7
+	input, _ := json.Marshal(arr)
+	v := hexutil.Encode(input)
 
+	var args []interface{}
+	hexbytes := hexutil.MustDecode(v)
+
+	err := json.Unmarshal(hexbytes, &args)
 	if err != nil {
 		panic(err)
 	}
 
-	// if *pmFlag {
-	// 	compileStartTime := time.Now()
-	// 	fmt.Println("[Polymerase] Compilation started.")
-	// 	aotSvc := platform.FullAOTCompile(vm)
-	// 	if aotSvc != nil {
-	// 		compileEndTime := time.Now()
-	// 		fmt.Printf("[Polymerase] Compilation finished successfully in %+v.\n", compileEndTime.Sub(compileStartTime))
-	// 		vm.SetAOTService(aotSvc)
-	// 	} else {
-	// 		fmt.Println("[Polymerase] The current platform is not yet supported.")
-	// 	}
-	// }
-
-	// Get the function ID of the entry function to be executed.
-	entryID, ok := vm.GetFunctionExport("main")
-	if !ok {
-		fmt.Printf("Entry function %s not found; starting from 0.\n", "main")
-		entryID = 0
+	targs := make([]interface{}, len(args))
+	for i := 0; i < len(args); i++ {
+		targs[i] = cast.ToInt32(args[i])
 	}
 
-	// If any function prior to the entry function was declared to be
-	// called by the module, run it first.
-	if vm.Module.Base.Start != nil {
-		startID := int(vm.Module.Base.Start.Index)
-		_, err := vm.Run(startID)
-		if err != nil {
-			vm.PrintStackTrace()
-			panic(err)
-		}
-	}
-	var args []int64
-	var v []string
-	err = rlp.DecodeBytes(c.Input, &v)
-	if err != nil {
-		vm.PrintStackTrace()
-		panic(err)
-	}
+	store := wasmer.NewStore(e.engine)
 
-	for _, arg := range v {
-		fmt.Println(arg)
-		if ia, err := strconv.Atoi(arg); err != nil {
-			panic(err)
-		} else {
-			args = append(args, int64(ia))
-		}
-	}
+	// Compiles the module
+	module, _ := wasmer.NewModule(store, wasmBytes)
+
+	// Instantiates the module
+	importObject := wasmer.NewImportObject()
+	instance, _ := wasmer.NewInstance(module, importObject)
+
+	main, _ := instance.Exports.GetFunction("sum")
+
+	// Calls that exported function with Go standard values. The WebAssembly
+	// types are inferred and values are casted automatically.
+	result, err := main((targs)...)
+
+	hexvalue, _ := toHex(result)
 
 	// gasCost := vm.GasPolicy.GetCost()
 
@@ -122,15 +104,26 @@ func (e *WASM) Run(c *runtime.Contract, host runtime.Host, config *chain.ForksIn
 	// 	Err:         err,
 	// }
 
-	// Run the WebAssembly module's entry function.
-	ret, err := vm.Run(entryID, args...)
-	if err != nil {
-		vm.PrintStackTrace()
-		panic(err)
-	}
 	return &runtime.ExecutionResult{
-		ReturnValue: []byte(cast.ToString(ret)),
+		ReturnValue: hexvalue,
 		// GasLeft:     gasLeft,
 		Err: err,
 	}
+}
+
+func toHex(result interface{}) ([]byte, error) {
+	var hexresult hexutil.Bytes
+
+	hexresult, err := json.Marshal(result)
+
+	if err != nil {
+		return nil, err
+	}
+
+	hexvalue, err := hexresult.MarshalText()
+
+	if err != nil {
+		return nil, err
+	}
+	return hexvalue, nil
 }
