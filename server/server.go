@@ -23,13 +23,16 @@ import (
 	"github.com/0xPolygon/polygon-sdk/state/runtime"
 	"github.com/0xPolygon/polygon-sdk/txpool"
 	"github.com/0xPolygon/polygon-sdk/types"
-	"github.com/anconprotocol/node/x/anconsync"
+	"github.com/anconprotocol/sdk"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 
 	"github.com/hashicorp/go-hclog"
 	"google.golang.org/grpc"
+	dbm "github.com/tendermint/tm-db"
 
+	"github.com/anconprotocol/sdk/proofsignature"
+	
 	itrie "github.com/0xPolygon/polygon-sdk/state/immutable-trie"
 	"github.com/0xPolygon/polygon-sdk/state/runtime/evm"
 	"github.com/0xPolygon/polygon-sdk/state/runtime/precompiled"
@@ -45,7 +48,7 @@ type Server struct {
 	config       *Config
 	state        state.State
 	stateStorage itrie.Storage
-	dagStorage   anconsync.Storage
+	dagStorage   sdk.Storage
 
 	consensus consensus.Consensus
 
@@ -123,7 +126,7 @@ func NewServer(logger hclog.Logger, config *Config) (*Server, error) {
 	}
 
 	dataFolder := ".ancon"
-	anconstorage := anconsync.NewStorage(dataFolder)
+	anconstorage := sdk.NewStorage(dataFolder)
 
 	// start blockchain object
 	stateStorage, err := itrie.NewLevelDBStorage(filepath.Join(m.config.DataDir, "trie"), logger)
@@ -136,11 +139,15 @@ func NewServer(logger hclog.Logger, config *Config) (*Server, error) {
 	st := itrie.NewState(stateStorage)
 	m.state = st
 
+	db := dbm.NewMemDB()
+
+	proofs, _ := proofsignature.NewIavlAPI(m.dagStorage,nil, db, 2000, 0)
+
 	m.executor = state.NewExecutor(config.Chain.Params, st, logger)
 	m.executor.SetRuntime(precompiled.NewPrecompiled())
 	m.executor.SetRuntime(evm.NewEVM())
 	m.executor.SetRuntime(wasm.NewVM(m.dagStorage))
-	m.executor.PostHook = local.GetHooks(m.dagStorage)
+	m.executor.PostHook = local.GetHooks(m.dagStorage, proofs)
 
 	// Graphsync works!
 	// local.NewRouter(context.Background(), m.network.Host, m.dagStorage)

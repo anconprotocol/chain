@@ -1,32 +1,25 @@
 package local
 
 import (
-	"context"
 	"encoding/json"
 	"fmt"
 
 	"github.com/ipfs/go-cid"
-	gsync "github.com/ipfs/go-graphsync"
-	graphsync "github.com/ipfs/go-graphsync/impl"
 	"github.com/ipfs/go-graphsync/ipldutil"
-	gsnet "github.com/ipfs/go-graphsync/network"
 
 	"github.com/ipld/go-ipld-prime"
 	"github.com/ipld/go-ipld-prime/datamodel"
 	"github.com/ipld/go-ipld-prime/fluent"
 	cidlink "github.com/ipld/go-ipld-prime/linking/cid"
 	"github.com/ipld/go-ipld-prime/node/basicnode"
-	"github.com/libp2p/go-libp2p-core/host"
-	dht "github.com/libp2p/go-libp2p-kad-dht"
 
 	"github.com/0xPolygon/polygon-sdk/state"
 	"github.com/0xPolygon/polygon-sdk/types"
-	"github.com/anconprotocol/node/x/anconsync"
+	"github.com/anconprotocol/sdk"
+	"github.com/anconprotocol/sdk/proofsignature"
 	"github.com/ethereum/go-ethereum/accounts/abi"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/common/hexutil"
-
-	"github.com/libp2p/go-libp2p-core/peer"
 
 	"github.com/spf13/cast"
 )
@@ -100,12 +93,12 @@ func StoreDagBlockDoneEvent() abi.Event {
 		}, abi.Argument{
 			Name:    "cid",
 			Type:    str,
-			Indexed: true,
+			Indexed: false,
 		}},
 	)
 }
 
-func encodeDagCborBlock(s anconsync.Storage, inputs abi.Arguments, data []byte, txHash types.Hash, blockHash types.Hash, chainID int64) (datamodel.Node, datamodel.Link, error) {
+func encodeDagCborBlock(s sdk.Storage, inputs abi.Arguments, data []byte, txHash types.Hash, blockHash types.Hash, chainID int64) (datamodel.Node, datamodel.Link, error) {
 
 	props, err := inputs.Unpack(data)
 	if err != nil {
@@ -144,7 +137,7 @@ func encodeDagCborBlock(s anconsync.Storage, inputs abi.Arguments, data []byte, 
 	return n, lnk, nil
 }
 
-func encodeAnconMetadata(s anconsync.Storage, inputs abi.Arguments, data []byte, txHash types.Hash, blockHash types.Hash, chainID int64) (datamodel.Node, datamodel.Link, error) {
+func encodeAnconMetadata(s sdk.Storage, inputs abi.Arguments, data []byte, txHash types.Hash, blockHash types.Hash, chainID int64) (datamodel.Node, datamodel.Link, error) {
 
 	props, err := inputs.Unpack(data)
 
@@ -181,7 +174,7 @@ func encodeAnconMetadata(s anconsync.Storage, inputs abi.Arguments, data []byte,
 
 			na.AssembleEntry("sources").CreateList(cast.ToInt64(len(sources)), func(la fluent.ListAssembler) {
 				for _, v := range sources {
-					lnk, err := anconsync.ParseCidLink((v))
+					lnk, err := sdk.ParseCidLink((v))
 					if err != nil {
 						continue
 					}
@@ -238,7 +231,7 @@ func EncodeDagJsonEvent() abi.Event {
 		}},
 	)
 }
-func encodeDagJsonBlock(s anconsync.Storage, inputs abi.Arguments, data []byte, txHash, blockHash types.Hash, chainID int64) (datamodel.Node, datamodel.Link, error) {
+func encodeDagJsonBlock(s sdk.Storage, inputs abi.Arguments, data []byte, txHash, blockHash types.Hash, chainID int64) (datamodel.Node, datamodel.Link, error) {
 
 	props, err := inputs.Unpack(data)
 	if err != nil {
@@ -252,7 +245,7 @@ func encodeDagJsonBlock(s anconsync.Storage, inputs abi.Arguments, data []byte, 
 	js := hexutil.Bytes{}
 	js.UnmarshalJSON(bz)
 
-	n, _ := anconsync.Decode(basicnode.Prototype.Any, string(js))
+	n, _ := sdk.Decode(basicnode.Prototype.Any, string(js))
 
 	// var nodelink datamodel.Link
 
@@ -281,7 +274,7 @@ func encodeDagJsonBlock(s anconsync.Storage, inputs abi.Arguments, data []byte, 
 	return n, lnk, nil
 }
 
-func PostTxProcessing(s anconsync.Storage, t *state.Transition) error {
+func PostTxProcessing(s sdk.Storage, p *proofsignature.IavlProofService, t *state.Transition) error {
 	for _, log := range t.Txn().Logs() {
 		for _, topic := range log.Topics {
 
@@ -305,7 +298,7 @@ func PostTxProcessing(s anconsync.Storage, t *state.Transition) error {
 				node, lnk, err = encodeDagCborBlock(s, EncodeDagCborEvent().Inputs, log.Data, txHash, blockHash, t.GetTxContext().ChainID)
 
 			default:
-				return fmt.Errorf("failed to decode")
+				continue
 			}
 			// if !ContractAllowed(log.Address) {
 			// 	// Check the contract whitelist to prevent accidental native call.
@@ -315,10 +308,22 @@ func PostTxProcessing(s anconsync.Storage, t *state.Transition) error {
 				return err
 			}
 
+			n, err := ipldutil.EncodeNode(node)
+			if err != nil {
+				return err
+			}
+			_, err = p.Set([]byte(lnk.String()), n)
+
+			if err != nil {
+				return err
+			}
+
 			fmt.Println(lnk.String())
 			fmt.Println(node)
-			StoreDagBlockDoneEvent().Inputs.Pack()
-			t.EmitLog(log.Address, log.Topics, []byte(lnk.String()))
+			l, _ := StoreDagBlockDoneEvent().Inputs.Pack("/", lnk.String())
+			topics := make([]types.Hash, 1)
+			topics[0] = types.Hash(StoreDagBlockDoneEvent().ID)
+			t.EmitLog(log.Address, topics, l)
 
 			if err != nil {
 				return err
@@ -329,53 +334,8 @@ func PostTxProcessing(s anconsync.Storage, t *state.Transition) error {
 	return nil
 }
 
-func GetHooks(s anconsync.Storage) func(t *state.Transition) {
+func GetHooks(s sdk.Storage, p *proofsignature.IavlProofAPI) func(t *state.Transition) {
 	return func(t *state.Transition) {
-		PostTxProcessing(s, t)
+		PostTxProcessing(s, p.Service, t)
 	}
-}
-
-func NewRouter(ctx context.Context, gsynchost host.Host, s anconsync.Storage) gsync.GraphExchange {
-
-	var pi *peer.AddrInfo
-	for _, addr := range dht.DefaultBootstrapPeers {
-		pi, _ = peer.AddrInfoFromP2pAddr(addr)
-		// We ignore errors as some bootstrap peers may be down
-		// and that is fine.
-		gsynchost.Connect(ctx, *pi)
-	}
-	network := gsnet.NewFromLibp2pHost(gsynchost)
-
-	// Add Ancon fsstore
-	exchange := graphsync.New(ctx, network, s.LinkSystem)
-
-	// var receivedResponseData []byte
-	// var receivedRequestData []byte
-
-	exchange.RegisterIncomingResponseHook(
-		func(p peer.ID, responseData gsync.ResponseData, hookActions gsync.IncomingResponseHookActions) {
-			fmt.Println(responseData.Status().String(), responseData.RequestID())
-		})
-
-	exchange.RegisterIncomingRequestHook(func(p peer.ID, requestData gsync.RequestData, hookActions gsync.IncomingRequestHookActions) {
-		// var has bool
-		// receivedRequestData, has = requestData.Extension(td.extensionName)
-		// if !has {
-		// 	hookActions.TerminateWithError(errors.New("Missing extension"))
-		// } else {
-		// 	hookActions.SendExtensionData(td.extensionResponse)
-		// }
-		hookActions.ValidateRequest()
-		hookActions.UseLinkTargetNodePrototypeChooser(basicnode.Chooser)
-		fmt.Println(requestData.Root(), requestData.ID(), requestData.IsCancel())
-	})
-	finalResponseStatusChan := make(chan gsync.ResponseStatusCode, 1)
-	exchange.RegisterCompletedResponseListener(func(p peer.ID, request gsync.RequestData, status gsync.ResponseStatusCode) {
-		select {
-		case finalResponseStatusChan <- status:
-		default:
-		}
-	})
-
-	return exchange
 }

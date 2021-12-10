@@ -6,7 +6,7 @@ import (
 
 	"github.com/0xPolygon/polygon-sdk/chain"
 	"github.com/0xPolygon/polygon-sdk/state/runtime"
-	"github.com/anconprotocol/node/x/anconsync"
+	"github.com/anconprotocol/sdk"
 	"github.com/ethereum/go-ethereum/common/hexutil"
 	wasm_validation "github.com/perlin-network/life/wasm-validation"
 	"github.com/spf13/cast"
@@ -24,11 +24,11 @@ type contract interface {
 // WASM is the ethereum virtual machine
 type WASM struct {
 	engine *wasmer.Engine
-	store  anconsync.Storage
+	store  sdk.Storage
 }
 
 // NewEVM creates a new WASM
-func NewVM(s anconsync.Storage) *WASM {
+func NewVM(s sdk.Storage) *WASM {
 	engine := wasmer.NewEngine()
 	return &WASM{store: s, engine: engine}
 }
