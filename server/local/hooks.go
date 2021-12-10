@@ -1,8 +1,10 @@
 package local
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
+	"sync"
 
 	"github.com/ipfs/go-cid"
 	"github.com/ipfs/go-graphsync/ipldutil"
@@ -23,6 +25,13 @@ import (
 
 	"github.com/spf13/cast"
 )
+
+var rwLock sync.RWMutex
+
+func init() {
+
+	rwLock = sync.RWMutex{}
+}
 
 func AddOnchainMetadataEvent() abi.Event {
 
@@ -146,13 +155,14 @@ func encodeAnconMetadata(s sdk.Storage, inputs abi.Arguments, data []byte, txHas
 
 	var sources map[string]string
 
-	js := hexutil.Bytes{}
-	js.UnmarshalJSON(bz)
+	// js := hexutil.Bytes{}
+	// js.UnmarshalJSON(bz)
 
-	err = json.Unmarshal(js, &sources)
+	err = json.Unmarshal(bz, &sources)
 
 	if err != nil {
-		return nil, nil, err
+		e := fmt.Errorf("Invalid sources not a JSON string", err)
+		return nil, nil, e
 	}
 
 	n := fluent.MustBuildMap(basicnode.Prototype.Map, 10, func(na fluent.MapAssembler) {
@@ -202,9 +212,16 @@ func encodeAnconMetadata(s sdk.Storage, inputs abi.Arguments, data []byte, txHas
 		MhLength: 32,   // sha2-256 hash has a 32-byte sum.
 	}}
 
+	store, err := s.LinkSystem.Store(ipld.LinkContext{
+		LinkPath: datamodel.Path{},
+	}, p, transactionBlock)
+
 	lnk, err := s.LinkSystem.Store(ipld.LinkContext{
+		LinkPath: datamodel.Path{},
 		LinkNode: transactionBlock,
 	}, p, n)
+
+	s.DataStore.Put(context.Background(), blockHash.String(), []byte(store.String()))
 
 	if err != nil {
 		return nil, nil, err
@@ -275,6 +292,10 @@ func encodeDagJsonBlock(s sdk.Storage, inputs abi.Arguments, data []byte, txHash
 }
 
 func PostTxProcessing(s sdk.Storage, p *proofsignature.IavlProofService, t *state.Transition) error {
+
+	rwLock.RLock()
+	defer rwLock.RUnlock()
+
 	for _, log := range t.Txn().Logs() {
 		for _, topic := range log.Topics {
 

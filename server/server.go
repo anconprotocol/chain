@@ -18,6 +18,7 @@ import (
 	"github.com/0xPolygon/polygon-sdk/network"
 	"github.com/0xPolygon/polygon-sdk/secrets"
 	"github.com/0xPolygon/polygon-sdk/server/local"
+	_ "github.com/0xPolygon/polygon-sdk/server/local"
 	"github.com/0xPolygon/polygon-sdk/server/proto"
 	"github.com/0xPolygon/polygon-sdk/state"
 	"github.com/0xPolygon/polygon-sdk/state/runtime"
@@ -28,15 +29,14 @@ import (
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 
 	"github.com/hashicorp/go-hclog"
-	"google.golang.org/grpc"
 	dbm "github.com/tendermint/tm-db"
+	"google.golang.org/grpc"
 
 	"github.com/anconprotocol/sdk/proofsignature"
-	
+
 	itrie "github.com/0xPolygon/polygon-sdk/state/immutable-trie"
 	"github.com/0xPolygon/polygon-sdk/state/runtime/evm"
 	"github.com/0xPolygon/polygon-sdk/state/runtime/precompiled"
-	"github.com/0xPolygon/polygon-sdk/state/runtime/wasm"
 
 	"github.com/0xPolygon/polygon-sdk/blockchain"
 	"github.com/0xPolygon/polygon-sdk/consensus"
@@ -141,12 +141,12 @@ func NewServer(logger hclog.Logger, config *Config) (*Server, error) {
 
 	db := dbm.NewMemDB()
 
-	proofs, _ := proofsignature.NewIavlAPI(m.dagStorage,nil, db, 2000, 0)
+	proofs, _ := proofsignature.NewIavlAPI(m.dagStorage, nil, db, 2000, 0)
 
 	m.executor = state.NewExecutor(config.Chain.Params, st, logger)
 	m.executor.SetRuntime(precompiled.NewPrecompiled())
 	m.executor.SetRuntime(evm.NewEVM())
-	m.executor.SetRuntime(wasm.NewVM(m.dagStorage))
+	// m.executor.SetRuntime(wasm.NewVM(m.dagStorage))
 	m.executor.PostHook = local.GetHooks(m.dagStorage, proofs)
 
 	// Graphsync works!
