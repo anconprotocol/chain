@@ -3,7 +3,7 @@ module github.com/0xPolygon/polygon-sdk
 go 1.14
 
 require (
-	github.com/anconprotocol/sdk v0.1.0
+	github.com/anconprotocol/sdk v0.0.0-20211210172300-f956a50d0912
 	github.com/btcsuite/btcd v0.22.0-beta
 	github.com/ethereum/go-ethereum v1.10.13
 	github.com/go-kit/kit v0.12.0
