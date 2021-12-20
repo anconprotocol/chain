@@ -333,7 +333,8 @@ func PostTxProcessing(s sdk.Storage, p *proofsignature.IavlProofService, t *stat
 			if err != nil {
 				return err
 			}
-			_, err = p.Set([]byte(lnk.String()), n)
+			path := fmt.Sprintf("/anconprotocol/onchain/%s/%s", blockHash, lnk.String())
+			_, err = p.Set([]byte(path), n)
 
 			if err != nil {
 				return err
