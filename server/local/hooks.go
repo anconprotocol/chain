@@ -15,6 +15,7 @@ import (
 	cidlink "github.com/ipld/go-ipld-prime/linking/cid"
 	"github.com/ipld/go-ipld-prime/node/basicnode"
 
+	"github.com/0xPolygon/polygon-sdk/helper/keccak"
 	"github.com/0xPolygon/polygon-sdk/state"
 	"github.com/0xPolygon/polygon-sdk/types"
 	"github.com/anconprotocol/sdk"
@@ -333,8 +334,10 @@ func PostTxProcessing(s sdk.Storage, p *proofsignature.IavlProofService, t *stat
 			if err != nil {
 				return err
 			}
+			var hashed []byte
+			r := keccak.Keccak256(hashed, n)
 			path := fmt.Sprintf("/anconprotocol/onchain/%s/%s", blockHash, lnk.String())
-			_, err = p.Set([]byte(path), n)
+			_, err = p.Set([]byte(path), r)
 
 			if err != nil {
 				return err
